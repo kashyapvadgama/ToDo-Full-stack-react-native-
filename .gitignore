@@ -73,3 +73,24 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Environment files
+.env
+server/.env
+
+# Dependency files
+node_modules/
+server/node_modules/
+
+# Lock files (optional)
+package-lock.json
+server/package-lock.json
+
+# Dependency directories
+node_modules/
+server/node_modules/
+
+# Lock files
+package-lock.json
+server/package-lock.json
+

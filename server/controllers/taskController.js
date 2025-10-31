@@ -45,7 +45,7 @@ exports.getTasks = async (req, res) => {
 };
 
 exports.createTask = async (req, res) => {
-    const { title, description, deadline, priority, category } = req.body; // category add kiya
+    const { title, description, deadline, priority, category } = req.body; 
     try {
         const newTask = new Task({
             userId: req.user.id,
