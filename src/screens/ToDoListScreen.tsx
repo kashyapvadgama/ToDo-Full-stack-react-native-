@@ -1,50 +1,47 @@
-// =================================================================
-// 1. IMPORTS
-// =================================================================
-// React & React Native
 import React, { useEffect, useState, useMemo } from 'react';
 import { 
   View, Text, FlatList, StyleSheet, TouchableOpacity, 
   Modal, TextInput, Alert, ScrollView, StatusBar, 
   LayoutAnimation, UIManager, Platform 
 } from 'react-native';
+import { collection, addDoc, getDocs, query, where, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { db, auth } from "../api/firebaseConfig";
+import { signOut } from "firebase/auth";
 
-// Third-party Libraries
 import { useSelector, useDispatch } from 'react-redux';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/Feather';
 import DatePicker from 'react-native-date-picker';
 
-// Local Imports (Hamare apne components aur code)
 import { RootState, AppDispatch } from '../store';
 import { logout } from '../store/authSlice';
 import { Task, setTasks, addTask, updateTask, deleteTask } from '../store/taskSlice';
 import apiClient from '../api/apiClient';
 import TaskItem from '../components/TaskItem';
 
-// =================================================================
-// 2. CONFIGURATION & TYPES
-// =================================================================
-// Android ke liye LayoutAnimation enable karein
+
+
+
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Priority ke liye type define karein
+
 type Priority = 'Low' | 'Medium' | 'High';
 
-// =================================================================
-// 3. THE MAIN COMPONENT
-// =================================================================
+
+
+
 const ToDoListScreen = () => {
 
-  // -----------------------------------------------------------------
-  // A. HOOKS & STATE MANAGEMENT (Saare states ek jagah)
-  // -----------------------------------------------------------------
+  
+  
+  
   const dispatch: AppDispatch = useDispatch();
   const { tasks } = useSelector((state: RootState) => state.tasks);
 
-  // Modal aur Form ke States
+  
   const [modalVisible, setModalVisible] = useState(false);
   const [currentTask, setCurrentTask] = useState<Partial<Task> | null>(null);
   const [title, setTitle] = useState('');
@@ -54,59 +51,77 @@ const ToDoListScreen = () => {
   const [priority, setPriority] = useState<Priority>('Medium');
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   
-  // Filtering aur Sorting ke States
+  
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed'>('all');
   const [sortOrder, setSortOrder] = useState<'smart' | 'date' | 'alphabetical'>('smart');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // -----------------------------------------------------------------
-  // B. API & DATA HANDLING LOGIC (Server se baat-cheet)
-  // -----------------------------------------------------------------
-  const fetchTasks = () => {
-    apiClient.get('/tasks')
-      .then(res => {
-        // Animation ke saath list update karein
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        dispatch(setTasks(res.data));
-      })
-      .catch(err => Alert.alert('Error', 'Could not fetch tasks.'));
+  
+  
+  
+  const fetchTasks = async () => {
+  try {
+    const q = query(collection(db, "tasks"), where("userId", "==", auth.currentUser?.uid));
+    const querySnapshot = await getDocs(q);
+    const tasksData = querySnapshot.docs.map(doc => ({ _id: doc.id, ...doc.data() })) as Task[];
+
+    // REQUIREMENT: Sort by deadline (Earliest to Latest)
+    tasksData.sort((a, b) => {
+        if (!a.deadline) return 1;
+        if (!b.deadline) return -1;
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+    });
+
+    dispatch(setTasks(tasksData));
+  } catch (err) { Alert.alert('Error', 'Could not fetch tasks.'); }
+};
+
+const handleSaveTask = async () => {
+  if (!title) return Alert.alert('Error', 'Title is required.');
+  const taskData = {
+    userId: auth.currentUser?.uid,
+    title, description, category, priority,
+    deadline: deadline ? deadline.toISOString() : null,
+    completed: false
   };
 
-  const handleSaveTask = async () => {
-    if (!title) return Alert.alert('Error', 'Title is required.');
-    const taskData = { title, description, deadline, category, priority };
-    try {
-        if (currentTask?._id) {
-            await apiClient.put(`/tasks/${currentTask._id}`, taskData);
-        } else {
-            await apiClient.post('/tasks', taskData);
-        }
-        fetchTasks(); // Nayi aur sorted list ke liye server se data fetch karein
-        setModalVisible(false);
-    } catch (error) { Alert.alert('Error', 'Could not save the task.'); }
-  };
+  try {
+    if (currentTask?._id) {
+        await updateDoc(doc(db, "tasks", currentTask._id), taskData);
+    } else {
+        await addDoc(collection(db, "tasks"), taskData);
+    }
+    setModalVisible(false);
+    fetchTasks();
+  } catch (error) { Alert.alert('Error', 'Could not save.'); }
+};
 
-  const handleToggleComplete = async (task: Task) => {
-    const updatedTask = { ...task, completed: !task.completed };
-    dispatch(updateTask(updatedTask)); // Turant UI update ke liye
-    try { await apiClient.put(`/tasks/${task._id}`, updatedTask); } 
-    catch (error) { dispatch(updateTask(task)); Alert.alert('Error', 'Could not update status.'); }
-  };
+const handleToggleComplete = async (task: Task) => {
+  try {
+    await updateDoc(doc(db, "tasks", task._id), { completed: !task.completed });
+    fetchTasks();
+  } catch (error) { Alert.alert('Error', 'Update failed.'); }
+};
 
-  const handleDeleteTask = (id: string) => {
-    Alert.alert("Delete Task", "Are you sure you want to delete this task?", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: async () => {
-            dispatch(deleteTask(id)); // Turant UI update ke liye
-            try { await apiClient.delete(`/tasks/${id}`); } 
-            catch (error) { Alert.alert('Error', 'Could not delete task.'); }
-        }}
-    ]);
-  };
+const handleDeleteTask = (id: string) => {
+  Alert.alert("Delete", "Are you sure?", [
+    { text: "Cancel" },
+    { text: "Delete", onPress: async () => {
+        await deleteDoc(doc(db, "tasks", id));
+        fetchTasks();
+    }}
+  ]);
+};
 
-  // -----------------------------------------------------------------
-  // C. MEMOIZED COMPUTATIONS (Performance ke liye)
-  // -----------------------------------------------------------------
+const handleLogout = () => {
+    signOut(auth);
+    dispatch(logout());
+};
+
+    useEffect(() => {
+    fetchTasks();
+  }, []); 
+
   const sortedAndFilteredTasks = useMemo(() => {
     let processedTasks = [...tasks];
 
@@ -132,21 +147,9 @@ const ToDoListScreen = () => {
         return processedTasks.sort((a, b) => a.title.localeCompare(b.title));
       case 'smart':
       default:
-        return processedTasks; // Backend se aane wala default smart sort
+        return processedTasks; 
     }
   }, [tasks, filterStatus, searchQuery, sortOrder]);
-  
-  // -----------------------------------------------------------------
-  // D. EFFECTS (Component ke life-cycle ko handle karna)
-  // -----------------------------------------------------------------
-  useEffect(() => {
-    fetchTasks();
-  }, []); // Sirf pehli baar component load hone par chalaayein
-
-  // -----------------------------------------------------------------
-  // E. UI HANDLERS & HELPERS (Chote-mote UI functions)
-  // -----------------------------------------------------------------
-  const handleLogout = () => dispatch(logout());
 
   const openModal = (task?: Task) => {
     setCurrentTask(task || null);
@@ -160,9 +163,9 @@ const ToDoListScreen = () => {
 
   const formatDate = (date: Date | null) => date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Set Deadline';
   
-  // -----------------------------------------------------------------
-  // F. SUB-RENDER FUNCTIONS (JSX ko clean rakhne ke liye)
-  // -----------------------------------------------------------------
+  
+  
+  
   const renderTaskItem = ({ item }: { item: Task }) => (
     <TaskItem 
       item={item}
@@ -187,9 +190,9 @@ const ToDoListScreen = () => {
     </View>
   );
 
-  // -----------------------------------------------------------------
-  // G. MAIN RENDER (Component ka asli JSX)
-  // -----------------------------------------------------------------
+  
+  
+  
   return (
     <LinearGradient colors={['#E0EAFC', '#CFDEF3']} style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -214,8 +217,8 @@ const ToDoListScreen = () => {
         renderItem={renderTaskItem} 
         contentContainerStyle={{ paddingBottom: 100 }} 
         ListEmptyComponent={<Text style={styles.emptyListText}>No tasks found. Time to relax!</Text>} 
-        refreshing={false} // Add a loading state here for a spinner
-        onRefresh={fetchTasks} // Pull to refresh
+        refreshing={false} 
+        onRefresh={fetchTasks} 
       />
       
       {/* ===== ADD TASK BUTTON (FAB) ===== */}
@@ -248,9 +251,9 @@ const ToDoListScreen = () => {
   );
 };
 
-// =================================================================
-// 4. STYLES
-// =================================================================
+
+
+
 const styles = StyleSheet.create({
     container: { flex: 1 },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 25, paddingTop: 60 },
@@ -285,7 +288,7 @@ const styles = StyleSheet.create({
     modalButtonText: { fontWeight: 'bold', fontSize: 16 },
 });
 
-// =================================================================
-// 5. EXPORT
-// =================================================================
+
+
+
 export default ToDoListScreen;

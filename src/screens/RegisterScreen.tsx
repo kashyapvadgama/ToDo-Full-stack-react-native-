@@ -4,6 +4,10 @@ import { useDispatch } from 'react-redux';
 import { StackNavigationProp } from '@react-navigation/stack';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/Feather';
+import { auth } from "../api/firebaseConfig";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+
+
 
 import apiClient from '../api/apiClient';
 import { loginSuccess } from '../store/authSlice';
@@ -20,18 +24,15 @@ const RegisterScreen: React.FC<Props> = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const dispatch = useDispatch();
 
-  const handleRegister = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please enter both email and password.');
-      return;
-    }
-    try {
-      const res = await apiClient.post('/auth/register', { email, password });
-      dispatch(loginSuccess(res.data.token));
-    } catch (error: any) {
-      Alert.alert('Registration Failed', error.response?.data?.msg || 'An error occurred.');
-    }
-  };
+ const handleRegister = async () => {
+  if (!email || !password) return Alert.alert('Error', 'Enter email and password');
+  try {
+    const res = await createUserWithEmailAndPassword(auth, email, password);
+    dispatch(loginSuccess(res.user.uid)); // Store UID in Redux
+  } catch (error: any) {
+    Alert.alert('Registration Failed', error.message);
+  }
+};
 
   return (
     <LinearGradient colors={['#E0EAFC', '#CFDEF3']} style={styles.container}>

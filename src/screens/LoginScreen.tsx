@@ -4,6 +4,8 @@ import { useDispatch } from 'react-redux';
 import { StackNavigationProp } from '@react-navigation/stack';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/Feather';
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../api/firebaseConfig";
 
 import apiClient from '../api/apiClient';
 import { loginSuccess } from '../store/authSlice';
@@ -20,18 +22,15 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const dispatch = useDispatch();
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please enter both email and password.');
-      return;
-    }
-    try {
-      const res = await apiClient.post('/auth/login', { email, password });
-      dispatch(loginSuccess(res.data.token));
-    } catch (error: any) {
-      Alert.alert('Login Failed', error.response?.data?.msg || 'An error occurred.');
-    }
-  };
+const handleLogin = async () => {
+  if (!email || !password) return Alert.alert('Error', 'Enter email and password');
+  try {
+    const res = await signInWithEmailAndPassword(auth, email, password);
+    dispatch(loginSuccess(res.user.uid));
+  } catch (error: any) {
+    Alert.alert('Login Failed', error.message);
+  }
+};
 
   return (
     <LinearGradient colors={['#E0EAFC', '#CFDEF3']} style={styles.container}>
